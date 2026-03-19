@@ -4,6 +4,8 @@ import "./globals.css";
 import AnnouncementBar from "@/components/AnnouncementBar";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import SessionProvider from "@/components/providers/SessionProvider";
+import { CartProvider } from "@/lib/cartContext";
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",
@@ -32,10 +34,14 @@ export default function RootLayout({
       <body
         className={`${playfair.variable} ${inter.variable} font-body antialiased bg-[#121212] text-white flex flex-col min-h-screen overflow-x-hidden`}
       >
-        <AnnouncementBar />
-        <Navbar />
-        <main className="flex-grow overflow-x-hidden">{children}</main>
-        <Footer />
+        <SessionProvider>
+          <CartProvider>
+            <AnnouncementBar />
+            <Navbar />
+            <main className="flex-grow overflow-x-hidden">{children}</main>
+            <Footer />
+          </CartProvider>
+        </SessionProvider>
       </body>
     </html>
   );
