@@ -1,4 +1,15 @@
 const Product = require('../models/Product');
+const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+
+const s3 = new S3Client({
+  region: process.env.AWS_REGION || 'ap-south-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+const BUCKET = process.env.AWS_S3_BUCKET || 'shaanoshoukat';
+
 
 /**
  * @desc    Create a new product
@@ -131,15 +142,37 @@ const getProduct = async (req, res, next) => {
  */
 const updateProduct = async (req, res, next) => {
   try {
+    // Get the current product to compare images
+    const existing = await Product.findById(req.params.id);
+
+    if (!existing) {
+      res.status(404);
+      throw new Error('Product not found');
+    }
+
+    // If images are being updated, delete removed S3 images
+    if (req.body.images) {
+      const newKeys = new Set(
+        req.body.images.map((img) => img.key).filter(Boolean)
+      );
+      const removedImages = existing.images.filter(
+        (img) => img.key && !newKeys.has(img.key)
+      );
+
+      const deletePromises = removedImages.map((img) =>
+        s3
+          .send(new DeleteObjectCommand({ Bucket: BUCKET, Key: img.key }))
+          .catch((err) =>
+            console.error(`Failed to delete S3 image ${img.key}:`, err)
+          )
+      );
+      await Promise.all(deletePromises);
+    }
+
     const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
     });
-
-    if (!product) {
-      res.status(404);
-      throw new Error('Product not found');
-    }
 
     res.status(200).json({
       success: true,
@@ -163,6 +196,16 @@ const deleteProduct = async (req, res, next) => {
       res.status(404);
       throw new Error('Product not found');
     }
+
+    // Delete images from S3
+    const deletePromises = product.images
+      .filter((img) => img.key)
+      .map((img) =>
+        s3
+          .send(new DeleteObjectCommand({ Bucket: BUCKET, Key: img.key }))
+          .catch((err) => console.error(`Failed to delete S3 image ${img.key}:`, err))
+      );
+    await Promise.all(deletePromises);
 
     await product.deleteOne();
 

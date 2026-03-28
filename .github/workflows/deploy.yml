@@ -1,0 +1,59 @@
+name: Deploy ShaanoShaukat Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  # ─────────────────── Backend Deploy (EC2 + PM2) ───────────────────
+  deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install & validate backend
+        working-directory: backend
+        run: |
+          npm ci
+          # npm test  # Uncomment when tests exist
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/ubuntu/shaanoshaukat
+
+            echo "📥 Pulling latest code..."
+            git pull origin main
+
+            echo "📦 Installing backend dependencies..."
+            cd backend
+            npm ci --production
+
+            echo "🔄 Reloading PM2 processes..."
+            pm2 reload ecosystem.config.js --env production
+            pm2 save
+
+            echo "✅ Backend deployed successfully"
+
+  # ─────────────────────────────────────────────────────────────────
+  # Frontend: Deployed automatically by AWS Amplify on git push.
+  # No CI/CD job needed — Amplify watches the repo and auto-builds.
+  # ─────────────────────────────────────────────────────────────────
