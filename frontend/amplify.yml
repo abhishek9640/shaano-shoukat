@@ -7,6 +7,9 @@ applications:
             - npm ci
         build:
           commands:
+            - echo "AUTH_SECRET=$AUTH_SECRET" >> .env.production
+            - echo "AUTH_URL=$AUTH_URL" >> .env.production
+            - echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" >> .env.production
             - npm run build
       artifacts:
         baseDirectory: .next
