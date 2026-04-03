@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ShoppingCart } from "lucide-react";
+import { ShoppingCart, Tag } from "lucide-react";
 import api from "@/lib/api";
 import { useCart } from "@/lib/cartContext";
 import toast from "react-hot-toast";
@@ -11,6 +11,8 @@ interface RelatedProduct {
   _id: string;
   name: string;
   price: number;
+  compareAtPrice?: number;
+  discount?: number;
   images: { url: string }[];
   category: { _id: string; name: string } | null;
 }
@@ -18,16 +20,32 @@ interface RelatedProduct {
 interface RelatedProductsProps {
   categoryId: string;
   currentProductId: string;
+  relatedProducts?: RelatedProduct[];
+  upsellProducts?: RelatedProduct[];
 }
 
 export default function RelatedProducts({
   categoryId,
   currentProductId,
+  relatedProducts,
+  upsellProducts,
 }: RelatedProductsProps) {
   const [products, setProducts] = useState<RelatedProduct[]>([]);
   const { addToCart } = useCart();
 
   useEffect(() => {
+    // Use pre-populated related/upsell if available
+    const prePopulated = [
+      ...(relatedProducts || []),
+      ...(upsellProducts || []),
+    ].filter((p) => p._id !== currentProductId);
+
+    if (prePopulated.length > 0) {
+      setProducts(prePopulated.slice(0, 4));
+      return;
+    }
+
+    // Fallback: fetch by category
     const fetchRelated = async () => {
       try {
         const res = await api.get("/products", {
@@ -42,7 +60,7 @@ export default function RelatedProducts({
       }
     };
     if (categoryId) fetchRelated();
-  }, [categoryId, currentProductId]);
+  }, [categoryId, currentProductId, relatedProducts, upsellProducts]);
 
   if (products.length === 0) return null;
 
@@ -81,7 +99,15 @@ export default function RelatedProducts({
                     src={p.images[0]?.url || ""}
                     alt={p.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    loading="lazy"
                   />
+                  {/* Discount badge */}
+                  {p.discount && p.discount > 0 && (
+                    <span className="absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/90 text-white text-xs font-body font-semibold rounded-full">
+                      <Tag className="h-3 w-3" />
+                      {p.discount}% OFF
+                    </span>
+                  )}
                   {/* Quick Add overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-300 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100">
                     <button
@@ -106,9 +132,16 @@ export default function RelatedProducts({
                     {p.name}
                   </h3>
                 </Link>
-                <p className="text-sm text-white font-body font-medium mt-1.5">
-                  ₹{p.price.toLocaleString()}
-                </p>
+                <div className="flex items-baseline gap-2 mt-1.5">
+                  <p className="text-sm text-white font-body font-medium">
+                    ₹{p.price.toLocaleString()}
+                  </p>
+                  {p.compareAtPrice && p.compareAtPrice > p.price && (
+                    <p className="text-xs text-gray-500 font-body line-through">
+                      ₹{p.compareAtPrice.toLocaleString()}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           ))}

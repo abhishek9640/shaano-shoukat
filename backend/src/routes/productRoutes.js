@@ -3,6 +3,7 @@ const {
   createProduct,
   getProducts,
   getProduct,
+  getProductBySlug,
   updateProduct,
   deleteProduct,
 } = require('../controllers/productController');
@@ -14,6 +15,9 @@ router
   .route('/')
   .get(getProducts)
   .post(protect, admin, createProduct);
+
+// Slug-based lookup (must come before :id to avoid conflict)
+router.get('/slug/:slug', getProductBySlug);
 
 router
   .route('/:id')

@@ -10,6 +10,19 @@ const s3 = new S3Client({
 });
 const BUCKET = process.env.AWS_S3_BUCKET || 'shaanoshoukat';
 
+/**
+ * Helper: delete an array of S3 images by key
+ */
+const deleteS3Images = async (images) => {
+  const promises = images
+    .filter((img) => img.key)
+    .map((img) =>
+      s3
+        .send(new DeleteObjectCommand({ Bucket: BUCKET, Key: img.key }))
+        .catch((err) => console.error(`Failed to delete S3 image ${img.key}:`, err))
+    );
+  await Promise.all(promises);
+};
 
 /**
  * @desc    Create a new product
@@ -66,6 +79,20 @@ const getProducts = async (req, res, next) => {
       filter.stock = { $gt: 0 };
     }
 
+    // Status filter (default to published for public)
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+
+    // Merchandising filters
+    if (req.query.featured === 'true') filter.featured = true;
+    if (req.query.bestSeller === 'true') filter.bestSeller = true;
+    if (req.query.newArrival === 'true') filter.newArrival = true;
+
+    // Brand / Collection filters
+    if (req.query.brand) filter.brand = req.query.brand;
+    if (req.query.collection) filter.collection = req.query.collection;
+
     // Text search
     if (req.query.search) {
       filter.$text = { $search: req.query.search };
@@ -116,10 +143,36 @@ const getProducts = async (req, res, next) => {
  */
 const getProduct = async (req, res, next) => {
   try {
-    const product = await Product.findById(req.params.id).populate(
-      'category',
-      'name'
-    );
+    const product = await Product.findById(req.params.id)
+      .populate('category', 'name')
+      .populate('relatedProducts', 'name price images slug discount compareAtPrice')
+      .populate('upsellProducts', 'name price images slug discount compareAtPrice');
+
+    if (!product) {
+      res.status(404);
+      throw new Error('Product not found');
+    }
+
+    res.status(200).json({
+      success: true,
+      data: product,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get single product by slug
+ * @route   GET /api/products/slug/:slug
+ * @access  Public
+ */
+const getProductBySlug = async (req, res, next) => {
+  try {
+    const product = await Product.findOne({ slug: req.params.slug })
+      .populate('category', 'name')
+      .populate('relatedProducts', 'name price images slug discount compareAtPrice')
+      .populate('upsellProducts', 'name price images slug discount compareAtPrice');
 
     if (!product) {
       res.status(404);
@@ -142,7 +195,6 @@ const getProduct = async (req, res, next) => {
  */
 const updateProduct = async (req, res, next) => {
   try {
-    // Get the current product to compare images
     const existing = await Product.findById(req.params.id);
 
     if (!existing) {
@@ -150,7 +202,10 @@ const updateProduct = async (req, res, next) => {
       throw new Error('Product not found');
     }
 
-    // If images are being updated, delete removed S3 images
+    // Track who updated
+    req.body.updatedBy = req.user._id;
+
+    // If gallery images are being updated, delete removed S3 images
     if (req.body.images) {
       const newKeys = new Set(
         req.body.images.map((img) => img.key).filter(Boolean)
@@ -158,15 +213,18 @@ const updateProduct = async (req, res, next) => {
       const removedImages = existing.images.filter(
         (img) => img.key && !newKeys.has(img.key)
       );
+      await deleteS3Images(removedImages);
+    }
 
-      const deletePromises = removedImages.map((img) =>
-        s3
-          .send(new DeleteObjectCommand({ Bucket: BUCKET, Key: img.key }))
-          .catch((err) =>
-            console.error(`Failed to delete S3 image ${img.key}:`, err)
-          )
+    // If lifestyle images are being updated, delete removed S3 images
+    if (req.body.lifestyleImages) {
+      const newKeys = new Set(
+        req.body.lifestyleImages.map((img) => img.key).filter(Boolean)
       );
-      await Promise.all(deletePromises);
+      const removedImages = (existing.lifestyleImages || []).filter(
+        (img) => img.key && !newKeys.has(img.key)
+      );
+      await deleteS3Images(removedImages);
     }
 
     const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
@@ -197,16 +255,15 @@ const deleteProduct = async (req, res, next) => {
       throw new Error('Product not found');
     }
 
-    // Delete images from S3
-    const deletePromises = product.images
-      .filter((img) => img.key)
-      .map((img) =>
-        s3
-          .send(new DeleteObjectCommand({ Bucket: BUCKET, Key: img.key }))
-          .catch((err) => console.error(`Failed to delete S3 image ${img.key}:`, err))
-      );
-    await Promise.all(deletePromises);
+    // Delete all S3 images (gallery + lifestyle + cover + og)
+    const allImages = [
+      ...product.images,
+      ...(product.lifestyleImages || []),
+    ];
+    if (product.coverImage?.key) allImages.push(product.coverImage);
+    if (product.ogImage?.key) allImages.push(product.ogImage);
 
+    await deleteS3Images(allImages);
     await product.deleteOne();
 
     res.status(200).json({
@@ -222,6 +279,7 @@ module.exports = {
   createProduct,
   getProducts,
   getProduct,
+  getProductBySlug,
   updateProduct,
   deleteProduct,
 };

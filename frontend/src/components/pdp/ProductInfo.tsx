@@ -11,6 +11,8 @@ import {
   Shield,
   RotateCcw,
   Check,
+  CreditCard,
+  Tag,
 } from "lucide-react";
 import { useCart } from "@/lib/cartContext";
 import toast from "react-hot-toast";
@@ -19,12 +21,19 @@ interface Product {
   _id: string;
   name: string;
   price: number;
+  compareAtPrice?: number;
+  discount?: number;
+  shortDescription?: string;
   description: string;
   images: { url: string }[];
   ratings: number;
   numReviews: number;
   stock: number;
+  brand?: string;
+  collection?: string;
   category: { _id: string; name: string } | null;
+  deliveryEstimate?: string;
+  codAvailable?: boolean;
 }
 
 export default function ProductInfo({ product }: { product: Product }) {
@@ -54,20 +63,30 @@ export default function ProductInfo({ product }: { product: Product }) {
     window.location.href = "/checkout";
   };
 
-  // Short emotional description (first 2 sentences)
-  const shortDesc =
+  // Use shortDescription if available, otherwise truncate description
+  const displayDesc =
+    product.shortDescription ||
     product.description.split(".").slice(0, 2).join(".").trim() + ".";
 
   return (
     <div className="space-y-6">
-      {/* Category breadcrumb tag */}
-      {product.category && (
+      {/* Brand / Collection tag */}
+      {(product.brand || product.collection) && (
+        <span className="inline-block text-xs uppercase tracking-[0.2em] text-[#D4AF37]/80 font-body font-medium">
+          {product.brand}
+          {product.brand && product.collection && " · "}
+          {product.collection}
+        </span>
+      )}
+
+      {/* Category tag (fallback if no brand) */}
+      {!product.brand && product.category && (
         <span className="inline-block text-xs uppercase tracking-[0.2em] text-[#D4AF37]/80 font-body font-medium">
           {product.category.name}
         </span>
       )}
 
-      {/* Product Title — serif luxury */}
+      {/* Product Title */}
       <h1 className="text-3xl md:text-4xl lg:text-[2.75rem] font-sans font-semibold text-white leading-tight tracking-tight">
         {product.name}
       </h1>
@@ -96,17 +115,33 @@ export default function ProductInfo({ product }: { product: Product }) {
         </span>
       </div>
 
-      {/* Price */}
-      <div className="flex items-baseline gap-3">
+      {/* Price with MRP + discount badge */}
+      <div className="flex items-baseline gap-3 flex-wrap">
         <span className="text-3xl lg:text-4xl font-semibold text-white font-body tracking-tight">
           ₹{product.price.toLocaleString()}
         </span>
-        <span className="text-sm text-gray-500 font-body">MRP incl. taxes</span>
+        {product.compareAtPrice && product.compareAtPrice > product.price && (
+          <>
+            <span className="text-lg text-gray-500 font-body line-through">
+              ₹{product.compareAtPrice.toLocaleString()}
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/15 text-emerald-400 text-sm font-body font-semibold rounded-full">
+              <Tag className="h-3.5 w-3.5" />
+              {product.discount || Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)}% OFF
+            </span>
+          </>
+        )}
+        {(!product.compareAtPrice ||
+          product.compareAtPrice <= product.price) && (
+          <span className="text-sm text-gray-500 font-body">
+            MRP incl. taxes
+          </span>
+        )}
       </div>
 
       {/* Short Description */}
       <p className="text-gray-400 font-body text-base leading-relaxed max-w-lg">
-        {shortDesc}
+        {displayDesc}
       </p>
 
       {/* Divider */}
@@ -198,7 +233,9 @@ export default function ProductInfo({ product }: { product: Product }) {
           <button
             onClick={() => {
               setWishlisted(!wishlisted);
-              toast.success(wishlisted ? "Removed from wishlist" : "Added to wishlist");
+              toast.success(
+                wishlisted ? "Removed from wishlist" : "Added to wishlist"
+              );
             }}
             className="flex items-center gap-2 text-sm text-gray-400 hover:text-[#D4AF37] transition-colors font-body group"
           >
@@ -217,15 +254,27 @@ export default function ProductInfo({ product }: { product: Product }) {
       {/* Divider */}
       <div className="border-t border-white/5" />
 
-      {/* Delivery & Trust Info */}
+      {/* Delivery & Trust Info — dynamic */}
       <div className="space-y-3">
         <div className="flex items-center gap-3 text-sm text-gray-400 font-body">
           <Truck className="h-4 w-4 text-[#D4AF37] flex-shrink-0" />
           <span>
-            Free shipping on orders above{" "}
-            <span className="text-white font-medium">₹999</span>
+            {product.deliveryEstimate
+              ? `Delivery in ${product.deliveryEstimate}`
+              : (
+                <>
+                  Free shipping on orders above{" "}
+                  <span className="text-white font-medium">₹999</span>
+                </>
+              )}
           </span>
         </div>
+        {product.codAvailable !== false && (
+          <div className="flex items-center gap-3 text-sm text-gray-400 font-body">
+            <CreditCard className="h-4 w-4 text-[#D4AF37] flex-shrink-0" />
+            <span>Cash on Delivery available</span>
+          </div>
+        )}
         <div className="flex items-center gap-3 text-sm text-gray-400 font-body">
           <Shield className="h-4 w-4 text-[#D4AF37] flex-shrink-0" />
           <span>Secure packaging guaranteed</span>
